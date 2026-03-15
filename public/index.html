@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Street View Video Generator</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        #map { height: 500px; width: 100%; border-radius: 12px; }
+        .marker-origin { background: #22c55e; border-radius: 50%; width: 30px; height: 30px; border: 3px solid white; }
+        .marker-dest { background: #ef4444; border-radius: 50%; width: 30px; height: 30px; border: 3px solid white; }
+        .loading-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+            display: none; align-items: center; justify-content: center; z-index: 9999;
+        }
+        .loading-overlay.active { display: flex; }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen">
+    
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="text-center">
+            <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto mb-4"></div>
+            <p class="text-xl">Generando video...</p>
+            <p class="text-slate-400 text-sm mt-2" id="loadingStatus">Descargando imágenes...</p>
+        </div>
+    </div>
+
+    <div class="max-w-6xl mx-auto p-6">
+        <header class="mb-8">
+            <h1 class="text-4xl font-bold mb-2"><i class="fas fa-video mr-3"></i>Street View Video Generator</h1>
+            <p class="text-slate-400">Selecciona origen y destino en el mapa para generar un video del recorrido</p>
+        </header>
+
+        <div class="grid md:grid-cols-3 gap-6">
+            <!-- Sidebar -->
+            <div class="space-y-4">
+                <!-- Instructions -->
+                <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                    <h3 class="font-bold mb-3"><i class="fas fa-info-circle mr-2"></i>Instrucciones</h3>
+                    <ol class="text-sm text-slate-300 space-y-2">
+                        <li>Haz clic en el mapa para marcar el <span class="text-green-400">ORIGEN</span> (verde)</li>
+                        <li>Haz clic de nuevo para el <span class="text-red-400">DESTINO</span> (rojo)</li>
+                        <li>Click en "Generar Video"</li>
+                        <li>Espera ~30-60 segundos</li>
+                        <li>¡Descarga tu video!</li>
+                    </ol>
+                </div>
+
+                <!-- Route Info -->
+                <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                    <h3 class="font-bold mb-3"><i class="fas fa-route mr-2"></i>Ruta Actual</h3>
+                    
+                    <div class="space-y-3 text-sm">
+                        <div>
+                            <span class="text-slate-400">Origen:</span>
+                            <div id="originCoords" class="font-mono text-green-400">No seleccionado</div>
+                        </div>
+                        <div>
+                            <span class="text-slate-400">Destino:</span>
+                            <div id="destCoords" class="font-mono text-red-400">No seleccionado</div>
+                        </div>
+                        <div id="distanceInfo" class="hidden">
+                            <span class="text-slate-400">Distancia:</span>
+                            <div id="routeDistance" class="font-bold">-</div>
+                        </div>
+                    </div>
+
+                    <button id="generateBtn" onclick="generateVideo()" disabled
+                            class="w-full mt-4 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded-lg font-bold transition">
+                        <i class="fas fa-play mr-2"></i>Generar Video
+                    </button>
+                    
+                    <button onclick="clearRoute()" 
+                            class="w-full mt-2 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition">
+                        <i class="fas fa-trash mr-2"></i>Limpiar
+                    </button>
+                </div>
+
+                <!-- Examples -->
+                <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                    <h3 class="font-bold mb-3"><i class="fas fa-star mr-2"></i>Ejemplos</h3>
+                    <div class="space-y-2">
+                        <button onclick="loadExample('madrid')" class="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm transition">
+                            🇪🇸 Madrid: Sol → Bernabéu
+                        </button>
+                        <button onclick="loadExample('nyc')" class="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm transition">
+                            🇺🇸 NYC: Central Park → Times Sq
+                        </button>
+                        <button onclick="loadExample('paris')" class="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm transition">
+                            🇫🇷 Paris: Torre Eiffel → Louvre
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Result -->
+                <div id="resultSection" class="hidden bg-slate-800 rounded-xl p-4 border border-green-500/30">
+                    <h3 class="font-bold mb-3 text-green-400"><i class="fas fa-check-circle mr-2"></i>¡Video Listo!</h3>
+                    
+                    <video id="resultVideo" controls class="w-full rounded-lg mb-3"></video>
+                    
+                    <a id="downloadBtn" href="#" download class="w-full py-3 bg-green-600 hover:bg-green-500 rounded-lg font-bold text-center block transition">
+                        <i class="fas fa-download mr-2"></i>Descargar MP4
+                    </a>
+                </div>
+            </div>
+
+            <!-- Map -->
+            <div class="md:col-span-2">
+                <div id="map" class="shadow-2xl"></div>
+                <p class="text-slate-400 text-sm mt-2">
+                    <i class="fas fa-mouse-pointer mr-1"></i> Haz clic dos veces en el mapa: primero origen (verde), luego destino (rojo)
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize map centered on Madrid
+        const map = L.map('map').setView([40.4168, -3.7038], 13);
+        
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+        }).addTo(map);
+
+        let originMarker = null;
+        let destMarker = null;
+        let routeLine = null;
+        let selectingOrigin = true;
+
+        // Custom icons
+        const originIcon = L.divIcon({
+            className: 'custom-div-icon',
+            html: "<div style='background:#22c55e;width:30px;height:30px;border-radius:50%;border:3px solid white;'></div>",
+            iconSize: [30, 30],
+            iconAnchor: [15, 15]
+        });
+
+        const destIcon = L.divIcon({
+            className: 'custom-div-icon',
+            html: "<div style='background:#ef4444;width:30px;height:30px;border-radius:50%;border:3px solid white;'></div>",
+            iconSize: [30, 30],
+            iconAnchor: [15, 15]
+        });
+
+        map.on('click', function(e) {
+            const { lat, lng } = e.latlng;
+            
+            if (selectingOrigin) {
+                if (originMarker) map.removeLayer(originMarker);
+                originMarker = L.marker([lat, lng], { icon: originIcon }).addTo(map);
+                document.getElementById('originCoords').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+                selectingOrigin = false;
+            } else {
+                if (destMarker) map.removeLayer(destMarker);
+                destMarker = L.marker([lat, lng], { icon: destIcon }).addTo(map);
+                document.getElementById('destCoords').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+                
+                // Draw route line
+                if (routeLine) map.removeLayer(routeLine);
+                routeLine = L.polyline([
+                    originMarker.getLatLng(),
+                    destMarker.getLatLng()
+                ], { color: '#6366f1', weight: 4, dashArray: '10, 10' }).addTo(map);
+                
+                // Calculate distance
+                const distance = calculateDistance(
+                    originMarker.getLatLng(),
+                    destMarker.getLatLng()
+                );
+                document.getElementById('distanceInfo').classList.remove('hidden');
+                document.getElementById('routeDistance').textContent = `${distance.toFixed(2)} km`;
+                
+                // Enable generate button
+                document.getElementById('generateBtn').disabled = false;
+            }
+        });
+
+        function calculateDistance(p1, p2) {
+            const R = 6371; // Earth's radius in km
+            const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+            const dLon = (p2.lng - p1.lng) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function clearRoute() {
+            if (originMarker) map.removeLayer(originMarker);
+            if (destMarker) map.removeLayer(destMarker);
+            if (routeLine) map.removeLayer(routeLine);
+            originMarker = null;
+            destMarker = null;
+            routeLine = null;
+            selectingOrigin = true;
+            
+            document.getElementById('originCoords').textContent = 'No seleccionado';
+            document.getElementById('destCoords').textContent = 'No seleccionado';
+            document.getElementById('distanceInfo').classList.add('hidden');
+            document.getElementById('generateBtn').disabled = true;
+            document.getElementById('resultSection').classList.add('hidden');
+        }
+
+        function loadExample(city) {
+            clearRoute();
+            
+            const examples = {
+                madrid: {
+                    origin: [40.4168, -3.7038],
+                    dest: [40.4530, -3.6883],
+                    zoom: 13
+                },
+                nyc: {
+                    origin: [40.7829, -73.9654],
+                    dest: [40.7580, -73.9855],
+                    zoom: 14
+                },
+                paris: {
+                    origin: [48.8584, 2.2945],
+                    dest: [48.8606, 2.3376],
+                    zoom: 14
+                }
+            };
+            
+            const ex = examples[city];
+            map.setView(ex.origin, ex.zoom);
+            
+            // Set origin
+            originMarker = L.marker(ex.origin, { icon: originIcon }).addTo(map);
+            document.getElementById('originCoords').textContent = `${ex.origin[0].toFixed(4)}, ${ex.origin[1].toFixed(4)}`;
+            
+            // Set dest
+            destMarker = L.marker(ex.dest, { icon: destIcon }).addTo(map);
+            document.getElementById('destCoords').textContent = `${ex.dest[0].toFixed(4)}, ${ex.dest[1].toFixed(4)}`;
+            
+            // Draw line
+            routeLine = L.polyline([ex.origin, ex.dest], { 
+                color: '#6366f1', weight: 4, dashArray: '10, 10' 
+            }).addTo(map);
+            
+            const distance = calculateDistance(
+                { lat: ex.origin[0], lng: ex.origin[1] },
+                { lat: ex.dest[0], lng: ex.dest[1] }
+            );
+            document.getElementById('distanceInfo').classList.remove('hidden');
+            document.getElementById('routeDistance').textContent = `${distance.toFixed(2)} km`;
+            document.getElementById('generateBtn').disabled = false;
+            selectingOrigin = false;
+        }
+
+        async function generateVideo() {
+            if (!originMarker || !destMarker) return;
+            
+            const loading = document.getElementById('loadingOverlay');
+            const status = document.getElementById('loadingStatus');
+            loading.classList.add('active');
+            
+            const origin = originMarker.getLatLng();
+            const dest = destMarker.getLatLng();
+            
+            try {
+                status.textContent = 'Enviando solicitud...';
+                
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        origin: { lat: origin.lat, lng: origin.lng },
+                        destination: { lat: dest.lat, lng: dest.lng }
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    status.textContent = 'Video generado!';
+                    
+                    // Show result
+                    document.getElementById('resultSection').classList.remove('hidden');
+                    document.getElementById('resultVideo').src = data.videoUrl;
+                    document.getElementById('downloadBtn').href = data.videoUrl;
+                    
+                    // Scroll to result
+                    document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error de conexión: ' + error.message);
+            } finally {
+                loading.classList.remove('active');
+            }
+        }
+    </script>
+
+</body>
+</html>
