@@ -6,103 +6,155 @@
     <title>Street View Video Generator</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet Geocoder for search -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         #map { height: 500px; width: 100%; border-radius: 12px; }
-        .marker-origin { background: #22c55e; border-radius: 50%; width: 30px; height: 30px; border: 3px solid white; }
-        .marker-dest { background: #ef4444; border-radius: 50%; width: 30px; height: 30px; border: 3px solid white; }
+        .marker-origin { background: #22c55e; border-radius: 50%; width: 30px; height: 30px; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+        .marker-dest { background: #ef4444; border-radius: 50%; width: 30px; height: 30px; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
         .loading-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.8);
             display: none; align-items: center; justify-content: center; z-index: 9999;
         }
         .loading-overlay.active { display: flex; }
+        /* Estilos para el buscador */
+        .leaflet-control-geocoder {
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .leaflet-control-geocoder-form input {
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+        .leaflet-control-geocoder-alternatives {
+            border-radius: 8px;
+            margin-top: 4px;
+        }
     </style>
 </head>
-<body class="bg-slate-900 text-white min-h-screen">
+<body class="bg-gray-100 text-gray-800 min-h-screen">
     
     <div class="loading-overlay" id="loadingOverlay">
         <div class="text-center">
             <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto mb-4"></div>
             <p class="text-xl">Generando video...</p>
-            <p class="text-slate-400 text-sm mt-2" id="loadingStatus">Descargando imágenes...</p>
+            <p class="text-gray-400 text-sm mt-2" id="loadingStatus">Descargando imágenes...</p>
         </div>
     </div>
 
     <div class="max-w-6xl mx-auto p-6">
         <header class="mb-8">
-            <h1 class="text-4xl font-bold mb-2"><i class="fas fa-video mr-3"></i>Street View Video Generator</h1>
-            <p class="text-slate-400">Selecciona origen y destino en el mapa para generar un video del recorrido</p>
+            <h1 class="text-4xl font-bold mb-2 text-gray-900"><i class="fas fa-video mr-3 text-indigo-600"></i>Street View Video Generator</h1>
+            <p class="text-gray-600">Busca una dirección o haz clic en el mapa para generar un video del recorrido</p>
         </header>
 
         <div class="grid md:grid-cols-3 gap-6">
             <!-- Sidebar -->
             <div class="space-y-4">
+                <!-- Search Box -->
+                <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                    <h3 class="font-bold mb-3 text-gray-800"><i class="fas fa-search mr-2 text-indigo-600"></i>Buscar Dirección</h3>
+                    <div id="searchContainer" class="mb-2">
+                        <input type="text" id="addressSearch" placeholder="Escribe una dirección..." 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500 text-sm">
+                        <button onclick="searchAddress()" class="mt-2 w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition">
+                            <i class="fas fa-search mr-1"></i>Buscar
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500">Haz clic en el mapa para establecer origen y destino</p>
+                </div>
+
                 <!-- Instructions -->
-                <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
-                    <h3 class="font-bold mb-3"><i class="fas fa-info-circle mr-2"></i>Instrucciones</h3>
-                    <ol class="text-sm text-slate-300 space-y-2">
-                        <li>Haz clic en el mapa para marcar el <span class="text-green-400">ORIGEN</span> (verde)</li>
-                        <li>Haz clic de nuevo para el <span class="text-red-400">DESTINO</span> (rojo)</li>
-                        <li>Click en "Generar Video"</li>
-                        <li>Espera ~30-60 segundos</li>
-                        <li>¡Descarga tu video!</li>
+                <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                    <h3 class="font-bold mb-3 text-gray-800"><i class="fas fa-info-circle mr-2 text-indigo-600"></i>Instrucciones</h3>
+                    <ol class="text-sm text-gray-600 space-y-2">
+                        <li class="flex items-start gap-2">
+                            <span class="bg-green-100 text-green-700 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold mt-0.5">1</span>
+                            <span>Haz clic en el mapa para marcar el <strong class="text-green-600">ORIGEN</strong> (verde)</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="bg-red-100 text-red-700 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold mt-0.5">2</span>
+                            <span>Haz clic de nuevo para el <strong class="text-red-600">DESTINO</strong> (rojo)</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="bg-indigo-100 text-indigo-700 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold mt-0.5">3</span>
+                            <span>Ajusta la velocidad y genera el video</span>
+                        </li>
                     </ol>
                 </div>
 
                 <!-- Route Info -->
-                <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
-                    <h3 class="font-bold mb-3"><i class="fas fa-route mr-2"></i>Ruta Actual</h3>
+                <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                    <h3 class="font-bold mb-3 text-gray-800"><i class="fas fa-route mr-2 text-indigo-600"></i>Ruta Actual</h3>
                     
                     <div class="space-y-3 text-sm">
-                        <div>
-                            <span class="text-slate-400">Origen:</span>
-                            <div id="originCoords" class="font-mono text-green-400">No seleccionado</div>
+                        <div class="bg-green-50 p-3 rounded-lg border border-green-200">
+                            <span class="text-green-700 font-medium text-xs uppercase tracking-wide">Origen</span>
+                            <div id="originCoords" class="font-mono text-green-700 font-semibold">No seleccionado</div>
                         </div>
-                        <div>
-                            <span class="text-slate-400">Destino:</span>
-                            <div id="destCoords" class="font-mono text-red-400">No seleccionado</div>
+                        <div class="bg-red-50 p-3 rounded-lg border border-red-200">
+                            <span class="text-red-700 font-medium text-xs uppercase tracking-wide">Destino</span>
+                            <div id="destCoords" class="font-mono text-red-700 font-semibold">No seleccionado</div>
                         </div>
-                        <div id="distanceInfo" class="hidden">
-                            <span class="text-slate-400">Distancia:</span>
-                            <div id="routeDistance" class="font-bold">-</div>
+                        <div id="distanceInfo" class="hidden bg-indigo-50 p-3 rounded-lg border border-indigo-200">
+                            <span class="text-indigo-700 font-medium text-xs uppercase tracking-wide">Distancia</span>
+                            <div id="routeDistance" class="font-bold text-indigo-700 text-lg">-</div>
                         </div>
                     </div>
 
+                    <!-- FPS Selector -->
+                    <div class="mt-4 pt-4 border-t border-gray-200">
+                        <label class="text-gray-600 text-sm block mb-2 font-medium">
+                            <i class="fas fa-film mr-1 text-indigo-600"></i>Velocidad del video (FPS):
+                        </label>
+                        <select id="fpsSelector" class="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200">
+                            <option value="3">3 FPS - Muy lento (suave)</option>
+                            <option value="5" selected>5 FPS - Lento</option>
+                            <option value="10">10 FPS - Normal</option>
+                            <option value="15">15 FPS - Rápido</option>
+                            <option value="24">24 FPS - Muy rápido</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">FPS = Fotogramas por segundo</p>
+                    </div>
+
                     <button id="generateBtn" onclick="generateVideo()" disabled
-                            class="w-full mt-4 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded-lg font-bold transition">
+                            class="w-full mt-4 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg font-bold transition shadow-sm">
                         <i class="fas fa-play mr-2"></i>Generar Video
                     </button>
                     
                     <button onclick="clearRoute()" 
-                            class="w-full mt-2 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition">
-                        <i class="fas fa-trash mr-2"></i>Limpiar
+                            class="w-full mt-2 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm transition">
+                        <i class="fas fa-trash mr-2"></i>Limpiar ruta
                     </button>
                 </div>
 
                 <!-- Examples -->
-                <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
-                    <h3 class="font-bold mb-3"><i class="fas fa-star mr-2"></i>Ejemplos</h3>
+                <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                    <h3 class="font-bold mb-3 text-gray-800"><i class="fas fa-star mr-2 text-indigo-600"></i>Ejemplos rápidos</h3>
                     <div class="space-y-2">
-                        <button onclick="loadExample('madrid')" class="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm transition">
+                        <button onclick="loadExample('madrid')" class="w-full py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm transition text-left px-3">
                             🇪🇸 Madrid: Sol → Bernabéu
                         </button>
-                        <button onclick="loadExample('nyc')" class="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm transition">
+                        <button onclick="loadExample('nyc')" class="w-full py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm transition text-left px-3">
                             🇺🇸 NYC: Central Park → Times Sq
                         </button>
-                        <button onclick="loadExample('paris')" class="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm transition">
+                        <button onclick="loadExample('paris')" class="w-full py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm transition text-left px-3">
                             🇫🇷 Paris: Torre Eiffel → Louvre
                         </button>
                     </div>
                 </div>
 
                 <!-- Result -->
-                <div id="resultSection" class="hidden bg-slate-800 rounded-xl p-4 border border-green-500/30">
-                    <h3 class="font-bold mb-3 text-green-400"><i class="fas fa-check-circle mr-2"></i>¡Video Listo!</h3>
+                <div id="resultSection" class="hidden bg-white rounded-xl p-4 border border-green-200 shadow-sm">
+                    <h3 class="font-bold mb-3 text-green-600"><i class="fas fa-check-circle mr-2"></i>¡Video Listo!</h3>
                     
-                    <video id="resultVideo" controls class="w-full rounded-lg mb-3"></video>
+                    <video id="resultVideo" controls class="w-full rounded-lg mb-3 shadow-sm"></video>
                     
-                    <a id="downloadBtn" href="#" download class="w-full py-3 bg-green-600 hover:bg-green-500 rounded-lg font-bold text-center block transition">
+                    <a id="downloadBtn" href="#" download class="w-full py-3 bg-green-600 hover:bg-green-500 text-white rounded-lg font-bold text-center block transition">
                         <i class="fas fa-download mr-2"></i>Descargar MP4
                     </a>
                 </div>
@@ -110,77 +162,171 @@
 
             <!-- Map -->
             <div class="md:col-span-2">
-                <div id="map" class="shadow-2xl"></div>
-                <p class="text-slate-400 text-sm mt-2">
-                    <i class="fas fa-mouse-pointer mr-1"></i> Haz clic dos veces en el mapa: primero origen (verde), luego destino (rojo)
+                <div id="map" class="shadow-lg border border-gray-200"></div>
+                <p class="text-gray-500 text-sm mt-2">
+                    <i class="fas fa-mouse-pointer mr-1"></i> Usa el buscador arriba o haz clic en el mapa para seleccionar los puntos
                 </p>
             </div>
         </div>
     </div>
 
     <script>
-        // Initialize map centered on Madrid
+        // Initialize map centered on Madrid - MODO CLARO
         const map = L.map('map').setView([40.4168, -3.7038], 13);
         
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+        // Mapa claro OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 19
         }).addTo(map);
+
+        // Capa alternativa satélite (opcional - descomentar si se quiere)
+        // L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        //     attribution: 'Tiles &copy; Esri',
+        //     maxZoom: 19
+        // }).addTo(map);
 
         let originMarker = null;
         let destMarker = null;
         let routeLine = null;
         let selectingOrigin = true;
+        let searchMarker = null;
 
         // Custom icons
         const originIcon = L.divIcon({
             className: 'custom-div-icon',
-            html: "<div style='background:#22c55e;width:30px;height:30px;border-radius:50%;border:3px solid white;'></div>",
+            html: "<div style='background:#22c55e;width:30px;height:30px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);'></div>",
             iconSize: [30, 30],
             iconAnchor: [15, 15]
         });
 
         const destIcon = L.divIcon({
             className: 'custom-div-icon',
-            html: "<div style='background:#ef4444;width:30px;height:30px;border-radius:50%;border:3px solid white;'></div>",
+            html: "<div style='background:#ef4444;width:30px;height:30px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);'></div>",
             iconSize: [30, 30],
             iconAnchor: [15, 15]
         });
+
+        // Añadir buscador de direcciones
+        const geocoder = L.Control.geocoder({
+            defaultMarkGeocode: false,
+            placeholder: "Buscar dirección...",
+            errorMessage: "No se encontró la dirección",
+            suggestTimeout: 250,
+            queryMinLength: 3
+        }).on('markgeocode', function(e) {
+            const latlng = e.geocode.center;
+            const name = e.geocode.name;
+            
+            // Quitar marcador anterior de búsqueda
+            if (searchMarker) map.removeLayer(searchMarker);
+            
+            // Añadir marcador de búsqueda
+            searchMarker = L.marker(latlng).addTo(map)
+                .bindPopup(name)
+                .openPopup();
+            
+            // Centrar mapa
+            map.fitBounds(e.geocode.bbox);
+            
+            // Preguntar si quiere usar como origen o destino
+            setTimeout(() => {
+                if (selectingOrigin) {
+                    setOrigin(latlng.lat, latlng.lng);
+                } else {
+                    setDest(latlng.lat, latlng.lng);
+                }
+            }, 500);
+        }).addTo(map);
+
+        // Función para buscar desde el input
+        async function searchAddress() {
+            const query = document.getElementById('addressSearch').value;
+            if (!query) return;
+            
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+                const data = await response.json();
+                
+                if (data.length > 0) {
+                    const result = data[0];
+                    const lat = parseFloat(result.lat);
+                    const lon = parseFloat(result.lon);
+                    
+                    // Quitar marcador anterior
+                    if (searchMarker) map.removeLayer(searchMarker);
+                    
+                    // Añadir marcador
+                    searchMarker = L.marker([lat, lon]).addTo(map)
+                        .bindPopup(result.display_name)
+                        .openPopup();
+                    
+                    // Centrar y hacer zoom
+                    map.setView([lat, lon], 16);
+                    
+                    // Establecer punto
+                    if (selectingOrigin) {
+                        setOrigin(lat, lon);
+                    } else {
+                        setDest(lat, lon);
+                    }
+                } else {
+                    alert('Dirección no encontrada. Intenta con otra búsqueda.');
+                }
+            } catch (error) {
+                console.error('Error buscando:', error);
+                alert('Error al buscar la dirección');
+            }
+        }
+
+        // Permitir buscar con Enter
+        document.getElementById('addressSearch')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') searchAddress();
+        });
+
+        function setOrigin(lat, lng) {
+            if (originMarker) map.removeLayer(originMarker);
+            originMarker = L.marker([lat, lng], { icon: originIcon }).addTo(map);
+            document.getElementById('originCoords').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+            selectingOrigin = false;
+        }
+
+        function setDest(lat, lng) {
+            if (destMarker) map.removeLayer(destMarker);
+            destMarker = L.marker([lat, lng], { icon: destIcon }).addTo(map);
+            document.getElementById('destCoords').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+            
+            // Dibujar línea
+            if (routeLine) map.removeLayer(routeLine);
+            routeLine = L.polyline([
+                originMarker.getLatLng(),
+                destMarker.getLatLng()
+            ], { color: '#6366f1', weight: 4, dashArray: '10, 10' }).addTo(map);
+            
+            // Calcular distancia
+            const distance = calculateDistance(
+                originMarker.getLatLng(),
+                destMarker.getLatLng()
+            );
+            document.getElementById('distanceInfo').classList.remove('hidden');
+            document.getElementById('routeDistance').textContent = `${distance.toFixed(2)} km`;
+            
+            // Habilitar botón
+            document.getElementById('generateBtn').disabled = false;
+        }
 
         map.on('click', function(e) {
             const { lat, lng } = e.latlng;
             
             if (selectingOrigin) {
-                if (originMarker) map.removeLayer(originMarker);
-                originMarker = L.marker([lat, lng], { icon: originIcon }).addTo(map);
-                document.getElementById('originCoords').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-                selectingOrigin = false;
+                setOrigin(lat, lng);
             } else {
-                if (destMarker) map.removeLayer(destMarker);
-                destMarker = L.marker([lat, lng], { icon: destIcon }).addTo(map);
-                document.getElementById('destCoords').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-                
-                // Draw route line
-                if (routeLine) map.removeLayer(routeLine);
-                routeLine = L.polyline([
-                    originMarker.getLatLng(),
-                    destMarker.getLatLng()
-                ], { color: '#6366f1', weight: 4, dashArray: '10, 10' }).addTo(map);
-                
-                // Calculate distance
-                const distance = calculateDistance(
-                    originMarker.getLatLng(),
-                    destMarker.getLatLng()
-                );
-                document.getElementById('distanceInfo').classList.remove('hidden');
-                document.getElementById('routeDistance').textContent = `${distance.toFixed(2)} km`;
-                
-                // Enable generate button
-                document.getElementById('generateBtn').disabled = false;
+                setDest(lat, lng);
             }
         });
 
         function calculateDistance(p1, p2) {
-            const R = 6371; // Earth's radius in km
+            const R = 6371;
             const dLat = (p2.lat - p1.lat) * Math.PI / 180;
             const dLon = (p2.lng - p1.lng) * Math.PI / 180;
             const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
@@ -194,9 +340,11 @@
             if (originMarker) map.removeLayer(originMarker);
             if (destMarker) map.removeLayer(destMarker);
             if (routeLine) map.removeLayer(routeLine);
+            if (searchMarker) map.removeLayer(searchMarker);
             originMarker = null;
             destMarker = null;
             routeLine = null;
+            searchMarker = null;
             selectingOrigin = true;
             
             document.getElementById('originCoords').textContent = 'No seleccionado';
@@ -230,27 +378,8 @@
             const ex = examples[city];
             map.setView(ex.origin, ex.zoom);
             
-            // Set origin
-            originMarker = L.marker(ex.origin, { icon: originIcon }).addTo(map);
-            document.getElementById('originCoords').textContent = `${ex.origin[0].toFixed(4)}, ${ex.origin[1].toFixed(4)}`;
-            
-            // Set dest
-            destMarker = L.marker(ex.dest, { icon: destIcon }).addTo(map);
-            document.getElementById('destCoords').textContent = `${ex.dest[0].toFixed(4)}, ${ex.dest[1].toFixed(4)}`;
-            
-            // Draw line
-            routeLine = L.polyline([ex.origin, ex.dest], { 
-                color: '#6366f1', weight: 4, dashArray: '10, 10' 
-            }).addTo(map);
-            
-            const distance = calculateDistance(
-                { lat: ex.origin[0], lng: ex.origin[1] },
-                { lat: ex.dest[0], lng: ex.dest[1] }
-            );
-            document.getElementById('distanceInfo').classList.remove('hidden');
-            document.getElementById('routeDistance').textContent = `${distance.toFixed(2)} km`;
-            document.getElementById('generateBtn').disabled = false;
-            selectingOrigin = false;
+            setOrigin(ex.origin[0], ex.origin[1]);
+            setDest(ex.dest[0], ex.dest[1]);
         }
 
         async function generateVideo() {
@@ -262,6 +391,7 @@
             
             const origin = originMarker.getLatLng();
             const dest = destMarker.getLatLng();
+            const fps = document.getElementById('fpsSelector').value;
             
             try {
                 status.textContent = 'Enviando solicitud...';
@@ -271,7 +401,8 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         origin: { lat: origin.lat, lng: origin.lng },
-                        destination: { lat: dest.lat, lng: dest.lng }
+                        destination: { lat: dest.lat, lng: dest.lng },
+                        fps: parseInt(fps)
                     })
                 });
                 
@@ -280,12 +411,10 @@
                 if (data.success) {
                     status.textContent = 'Video generado!';
                     
-                    // Show result
                     document.getElementById('resultSection').classList.remove('hidden');
                     document.getElementById('resultVideo').src = data.videoUrl;
                     document.getElementById('downloadBtn').href = data.videoUrl;
                     
-                    // Scroll to result
                     document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
                 } else {
                     alert('Error: ' + data.error);

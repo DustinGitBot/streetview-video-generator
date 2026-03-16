@@ -46,7 +46,7 @@ app.post('/api/generate', apiLimiter, async (req, res) => {
             });
         }
 
-        const { origin, destination, options = {} } = req.body;
+        const { origin, destination, fps } = req.body;
 
         // Validate inputs
         if (!origin || !destination) {
@@ -61,6 +61,9 @@ app.post('/api/generate', apiLimiter, async (req, res) => {
             });
         }
 
+        // Validate FPS
+        const validFps = fps && [3, 5, 10, 15, 24].includes(parseInt(fps)) ? parseInt(fps) : 5;
+
         // Check distance limit
         const distance = calculateDistance(origin, destination);
         const maxDistance = parseFloat(process.env.MAX_ROUTE_DISTANCE_KM) || 50;
@@ -73,13 +76,13 @@ app.post('/api/generate', apiLimiter, async (req, res) => {
             });
         }
 
-        console.log(`[Generate] Route: ${distance.toFixed(2)}km | ${dailyRequestCount}/${MAX_DAILY_REQUESTS} daily requests`);
+        console.log(`[Generate] Route: ${distance.toFixed(2)}km | FPS: ${validFps} | ${dailyRequestCount}/${MAX_DAILY_REQUESTS} daily requests`);
 
         // Increment counter
         dailyRequestCount++;
 
-        // Generate video
-        const result = await generateVideo({ origin, destination }, options);
+        // Generate video with FPS option
+        const result = await generateVideo({ origin, destination }, { fps: validFps });
 
         res.json({
             success: true,
