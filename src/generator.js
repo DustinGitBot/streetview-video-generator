@@ -31,23 +31,49 @@ async function checkRifeAvailable() {
 /**
  * Apply RIFE frame interpolation
  */
-async function applyRifeInterpolation(inputDir, outputDir, factor = 2) {
+async function applyRifeInterpolation(frameFiles, outputDir, factor = 2) {
     try {
         const rifeAvailable = await checkRifeAvailable();
         if (!rifeAvailable) {
-            console.log('[RIFE] Not available, using fallback');
+            console.log('[RIFE] Not available');
             return false;
         }
 
-        console.log(`[RIFE] Applying ${factor}x frame interpolation...`);
+        if (frameFiles.length < 5) {
+            console.log('[RIFE] Not enough frames');
+            return false;
+        }
+
+        console.log(`[RIFE] Preparing ${frameFiles.length} frames...`);
         
-        await execPromise(
-            `rife-ncnn-vulkan -i "${inputDir}" -o "${outputDir}" -n ${factor}`,
-            { timeout: 120000 }
-        );
+        // Crear directorios
+        const rifeInputDir = path.join(TEMP_DIR, 'rife_input');
+        await fs.mkdir(rifeInputDir, { recursive: true });
+        await fs.mkdir(outputDir, { recursive: true });
         
-        console.log('[RIFE] Interpolation complete');
-        return true;
+        // Convertir JPG a PNG y renumerar para RIFE
+        const sharp = require('sharp');
+        for (let i = 0; i < frameFiles.length; i++) {
+            const destFile = path.join(rifeInputDir, `input_${String(i + 1).padStart(4, '0')}.png`);
+            await sharp(frameFiles[i]).png().toFile(destFile);
+        }
+        
+        console.log(`[RIFE] Running ${factor}x interpolation...`);
+        
+        // Ejecutar RIFE
+        const rifeCmd = `cd "${rifeInputDir}" && rife-ncnn-vulkan -i . -o "${outputDir}" -n ${factor}`;
+        await execPromise(rifeCmd, { timeout: 300000 });
+        
+        // Verificar resultado
+        const outputFiles = await fs.readdir(outputDir);
+        const pngCount = outputFiles.filter(f => f.endsWith('.png')).length;
+        
+        console.log(`[RIFE] Generated ${pngCount} frames from ${frameFiles.length}`);
+        
+        // Limpiar
+        await fs.rm(rifeInputDir, { recursive: true, force: true });
+        
+        return pngCount > frameFiles.length;
     } catch (error) {
         console.error('[RIFE Error]', error.message);
         return false;
@@ -117,9 +143,8 @@ async function generateVideo(route, options = {}) {
         
         if (useAI && frameFiles.length > 5) {
             const rifeDir = path.join(TEMP_DIR, 'rife_output');
-            await fs.mkdir(rifeDir, { recursive: true });
             
-            const rifeSuccess = await applyRifeInterpolation(TEMP_DIR, rifeDir, 2);
+            const rifeSuccess = await applyRifeInterpolation(frameFiles, rifeDir, 2);
             
             if (rifeSuccess) {
                 finalFrameDir = rifeDir;
@@ -305,8 +330,16 @@ async function downloadStreetViewImages(pointsWithHeadings) {
  */
 function createVideoFromFrames(frameDir, outputPath, fps) {
     return new Promise((resolve, reject) => {
+        // Detectar si es directorio de RIFE (output_0001.png) o frames originales (frame_0001.jpg)
+        const isRifeDir = frameDir.includes('rife_output');
+        const inputPattern = isRifeDir 
+            ? path.join(frameDir, 'output_%04d.png')
+            : path.join(frameDir, 'frame_%04d.jpg');
+        
+        console.log(`[FFmpeg] Using pattern: ${inputPattern}`);
+        
         ffmpeg()
-            .input(path.join(frameDir, 'frame_%04d.jpg'))
+            .input(inputPattern)
             .inputFPS(fps)
             .output(outputPath)
             .videoCodec('libx264')

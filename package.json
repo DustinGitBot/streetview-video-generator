@@ -9,18 +9,25 @@
     "example:madrid": "node examples/madrid-route.js",
     "test": "jest"
   },
-  "keywords": ["street-view", "video", "generator", "google-maps", "timelapse"],
+  "keywords": [
+    "street-view",
+    "video",
+    "generator",
+    "google-maps",
+    "timelapse"
+  ],
   "author": "Tu Nombre",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.18.2",
-    "dotenv": "^16.3.1",
     "axios": "^1.5.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^6.10.0",
     "fluent-ffmpeg": "^2.1.2",
     "multer": "^1.4.5-lts.1",
-    "cors": "^2.8.5",
-    "express-rate-limit": "^6.10.0",
-    "node-cron": "^3.0.2"
+    "node-cron": "^3.0.2",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
