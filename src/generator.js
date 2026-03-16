@@ -2,10 +2,6 @@ const axios = require('axios');
 const fs = require('fs').promises;
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
-const { promisify } = require('util');
-const { exec } = require('child_process');
-const util = require('util');
-const execPromise = util.promisify(exec);
 
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const FRAMES_PER_ROUTE = parseInt(process.env.FRAMES_PER_ROUTE) || 200;
@@ -15,74 +11,6 @@ const VIDEO_FPS = parseInt(process.env.VIDEO_FPS) || 5;
 // Use absolute paths for Render compatibility
 const TEMP_DIR = process.env.TEMP_DIR ? path.resolve(process.env.TEMP_DIR) : path.join(__dirname, '..', 'temp');
 const OUTPUT_DIR = process.env.OUTPUT_DIR ? path.resolve(process.env.OUTPUT_DIR) : path.join(__dirname, '..', 'output');
-const USE_RIFE = process.env.USE_RIFE === 'true'; // Habilitar RIFE
-
-/**
- * Check if RIFE is available
- */
-async function checkRifeAvailable() {
-    try {
-        await execPromise('which rife-ncnn-vulkan');
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-/**
- * Apply RIFE frame interpolation
- */
-async function applyRifeInterpolation(frameFiles, outputDir, factor = 2) {
-    try {
-        const rifeAvailable = await checkRifeAvailable();
-        if (!rifeAvailable) {
-            console.log('[RIFE] Not available');
-            return false;
-        }
-
-        if (frameFiles.length < 5) {
-            console.log('[RIFE] Not enough frames');
-            return false;
-        }
-
-        console.log(`[RIFE] Preparing ${frameFiles.length} frames...`);
-        
-        // Crear directorios
-        const rifeInputDir = path.join(TEMP_DIR, 'rife_input');
-        await fs.mkdir(rifeInputDir, { recursive: true });
-        await fs.mkdir(outputDir, { recursive: true });
-        
-        // Convertir JPG a PNG y renumerar para RIFE
-        const sharp = require('sharp');
-        for (let i = 0; i < frameFiles.length; i++) {
-            const destFile = path.join(rifeInputDir, `input_${String(i + 1).padStart(4, '0')}.png`);
-            await sharp(frameFiles[i]).png().toFile(destFile);
-        }
-        
-        console.log(`[RIFE] Running interpolation...`);
-        
-        // Ejecutar RIFE - sin -n para usar default (duplica frames)
-        const rifeCmd = `rife-ncnn-vulkan -i "${rifeInputDir}" -o "${outputDir}"`;
-        await execPromise(rifeCmd, { 
-            timeout: 300000,
-            cwd: rifeInputDir
-        });
-        
-        // Verificar resultado
-        const outputFiles = await fs.readdir(outputDir);
-        const pngCount = outputFiles.filter(f => f.endsWith('.png')).length;
-        
-        console.log(`[RIFE] Generated ${pngCount} frames from ${frameFiles.length}`);
-        
-        // Limpiar
-        await fs.rm(rifeInputDir, { recursive: true, force: true });
-        
-        return pngCount > frameFiles.length;
-    } catch (error) {
-        console.error('[RIFE Error]', error.message);
-        return false;
-    }
-}
 
 /**
  * Calculate heading (direction) between two points
@@ -108,11 +36,10 @@ function calculateHeading(from, to) {
 async function generateVideo(route, options = {}) {
     const { origin, destination } = route;
     const fps = options.fps || VIDEO_FPS;
-    const useAI = options.useAI !== false; // Default true
     
     console.log('[Generator] Starting video generation...');
     console.log(`[Generator] Route: ${origin.lat},${origin.lng} → ${destination.lat},${destination.lng}`);
-    console.log(`[Generator] FPS: ${fps}, AI Interpolation: ${useAI}`);
+    console.log(`[Generator] FPS: ${fps}`);
 
     try {
         // Get directions
@@ -141,41 +68,22 @@ async function generateVideo(route, options = {}) {
         const frameFiles = await downloadStreetViewImages(pointsWithHeadings);
         console.log(`[Generator] Downloaded ${frameFiles.length} images`);
 
-        // AI Frame Interpolation (RIFE)
-        let finalFrameDir = TEMP_DIR;
-        let finalFps = fps;
-        
-        if (useAI && frameFiles.length > 5) {
-            const rifeDir = path.join(TEMP_DIR, 'rife_output');
-            
-            const rifeSuccess = await applyRifeInterpolation(frameFiles, rifeDir, 2);
-            
-            if (rifeSuccess) {
-                finalFrameDir = rifeDir;
-                finalFps = fps * 2; // Double FPS after interpolation
-                console.log(`[Generator] AI interpolation applied. New FPS: ${finalFps}`);
-            }
-        }
-
         // Generate video
         console.log('[Generator] Creating video...');
         const filename = `route_${Date.now()}.mp4`;
         const outputPath = path.join(OUTPUT_DIR, filename);
         
-        await createVideoFromFrames(finalFrameDir, outputPath, finalFps);
+        await createVideoFromFrames(TEMP_DIR, outputPath, fps);
         console.log(`[Generator] Video saved: ${outputPath}`);
 
         // Cleanup
         await cleanupTempFiles(frameFiles);
-        if (finalFrameDir !== TEMP_DIR) {
-            await fs.rm(finalFrameDir, { recursive: true, force: true });
-        }
 
         return {
             filename,
             frames: frameFiles.length,
-            duration: frameFiles.length / fps,
-            aiEnhanced: finalFrameDir !== TEMP_DIR
+            duration: (frameFiles.length / fps).toFixed(1),
+            distance: (directions.routes[0].legs[0].distance.value / 1000).toFixed(2)
         };
 
     } catch (error) {
@@ -334,11 +242,7 @@ async function downloadStreetViewImages(pointsWithHeadings) {
  */
 function createVideoFromFrames(frameDir, outputPath, fps) {
     return new Promise((resolve, reject) => {
-        // Detectar si es directorio de RIFE (output_0001.png) o frames originales (frame_0001.jpg)
-        const isRifeDir = frameDir.includes('rife_output');
-        const inputPattern = isRifeDir 
-            ? path.join(frameDir, 'output_%04d.png')
-            : path.join(frameDir, 'frame_%04d.jpg');
+        const inputPattern = path.join(frameDir, 'frame_%04d.jpg');
         
         console.log(`[FFmpeg] Using pattern: ${inputPattern}`);
         
@@ -378,4 +282,4 @@ async function cleanupTempFiles(frameFiles) {
     }
 }
 
-module.exports = { generateVideo, checkRifeAvailable };
+module.exports = { generateVideo };

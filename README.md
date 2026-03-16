@@ -128,26 +128,6 @@ Edit `public/index.html` and modify:
 const map = L.map('map').setView([40.4168, -3.7038], 13); // Madrid
 ```
 
-## 🧠 AI Frame Interpolation (Future)
-
-### Current Status
-Currently evaluating AI solutions for smoother frame transitions:
-
-| Solution | Cost | Quality | Speed |
-|----------|------|---------|-------|
-| **RIFE (Open Source)** | Free | High | Medium |
-| **DAIN (Open Source)** | Free | Very High | Slow |
-| **Topaz Video AI** | $299/license | Excellent | Fast |
-| **AWS SageMaker** | ~$0.05/min | High | Fast |
-
-### Recommendation
-For a free solution, **[RIFE](https://github.com/hzwer/ECCV2022-RIFE)** provides excellent frame interpolation. Integration would:
-- Double or triple frame rate
-- Create ultra-smooth transitions
-- Run locally (no API costs)
-
-**Estimated cost for cloud AI:** $0.02-0.05 per video generated.
-
 ## 🤝 Contributing
 
 Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
@@ -220,18 +200,6 @@ npm start
 **Vercel**:
 [![Deploy](https://vercel.com/button)](https://vercel.com/new)
 
-### 🧠 Interpolación de Fotogramas con IA
-
-Para transiciones más suaves entre fotogramas:
-
-| Solución | Coste | Calidad |
-|----------|-------|---------|
-| **RIFE** (Gratis) | Gratis | Alta |
-| **DAIN** (Gratis) | Gratis | Muy Alta |
-| **Topaz Video AI** | $299 | Excelente |
-
-**Recomendación:** RIFE es gratuito y funciona localmente, duplicando la tasa de fotogramas para videos ultra-suaves.
-
 ### ☕ Apoya el Proyecto
 
 Si te ha sido útil, invítame a un café:
@@ -241,20 +209,3 @@ Si te ha sido útil, invítame a un café:
 ---
 
 **Made with ❤️ by DustinBot**
-
-## 🧠 AI Frame Interpolation (Optional)
-
-For smoother videos, you can enable RIFE AI interpolation:
-
-```bash
-# Install RIFE models (optional)
-mkdir -p /usr/local/bin/rife-v2.3
-curl -L https://github.com/nihui/rife-ncnn-vulkan/releases/download/20221029/rife-ncnn-vulkan-20221029-macos.zip -o rife.zip
-unzip rife.zip
-sudo cp -r rife-ncnn-vulkan-*/rife-* /usr/local/bin/
-
-# Enable in .env
-USE_RIFE=true
-```
-
-**Note:** RIFE requires specific GPU drivers and models. It works on local machines but may not be available on all cloud providers.

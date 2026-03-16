@@ -20,5 +20,3 @@ services:
         value: 200
       - key: VIDEO_FPS
         value: 5
-      - key: USE_RIFE
-        value: false
