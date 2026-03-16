@@ -24,19 +24,11 @@ Try it now: [https://streetview-video.onrender.com](https://streetview-video.onr
 
 ### Main Interface
 ![Main Interface](screenshots/interface.png)
-*Clean, intuitive interface with map and controls*
-
-### Route Selection
-![Route Selection](screenshots/route.png)
-*Select origin (green) and destination (red) on the map*
-
-### Address Search
-![Address Search](screenshots/search.png)
-*Search for any address worldwide*
+*Interactive map with address search, route selection, and video settings*
 
 ### Video Generated
 ![Video Result](screenshots/video.png)
-*Download your route video in MP4 format*
+*Download your route video in MP4 format with Street View imagery*
 
 ## 🛠️ Installation
 
