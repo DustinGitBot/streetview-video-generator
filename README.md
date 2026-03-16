@@ -83,13 +83,21 @@ VIDEO_FPS=10
 
 ## 🚀 Deployment
 
-### Render (Free)
+### Render (Free) - Recommended
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/DustinGitBot/streetview-video-generator)
+
+**One-Click Deploy:**
+1. Click the button above
+2. Add your `GOOGLE_API_KEY` in the environment variables
+3. Deploy! 🎉
+
+**Or manually:**
 1. Fork this repository
 2. Create a new Web Service on [Render](https://render.com)
 3. Connect your GitHub repository
 4. Add environment variables in Render Dashboard
-5. Deploy! 🎉
+5. Deploy!
 
 ### Railway (Free)
 

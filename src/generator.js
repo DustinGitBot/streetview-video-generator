@@ -3,14 +3,56 @@ const fs = require('fs').promises;
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 const { promisify } = require('util');
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
 
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const FRAMES_PER_ROUTE = parseInt(process.env.FRAMES_PER_ROUTE) || 200;
 const FRAME_WIDTH = parseInt(process.env.FRAME_WIDTH) || 640;
 const FRAME_HEIGHT = parseInt(process.env.FRAME_HEIGHT) || 640;
-const VIDEO_FPS = parseInt(process.env.VIDEO_FPS) || 5; // Reducido a 5 FPS para video más lento
+const VIDEO_FPS = parseInt(process.env.VIDEO_FPS) || 5;
 const TEMP_DIR = process.env.TEMP_DIR || './temp';
 const OUTPUT_DIR = process.env.OUTPUT_DIR || './output';
+const USE_RIFE = process.env.USE_RIFE === 'true'; // Habilitar RIFE
+
+/**
+ * Check if RIFE is available
+ */
+async function checkRifeAvailable() {
+    try {
+        await execPromise('which rife-ncnn-vulkan');
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Apply RIFE frame interpolation
+ */
+async function applyRifeInterpolation(inputDir, outputDir, factor = 2) {
+    try {
+        const rifeAvailable = await checkRifeAvailable();
+        if (!rifeAvailable) {
+            console.log('[RIFE] Not available, using fallback');
+            return false;
+        }
+
+        console.log(`[RIFE] Applying ${factor}x frame interpolation...`);
+        
+        await execPromise(
+            `rife-ncnn-vulkan -i "${inputDir}" -o "${outputDir}" -n ${factor}`,
+            { timeout: 120000 }
+        );
+        
+        console.log('[RIFE] Interpolation complete');
+        return true;
+    } catch (error) {
+        console.error('[RIFE Error]', error.message);
+        return false;
+    }
+}
 
 /**
  * Calculate heading (direction) between two points
@@ -25,7 +67,7 @@ function calculateHeading(from, to) {
               Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
 
     let heading = Math.atan2(y, x) * 180 / Math.PI;
-    heading = (heading + 360) % 360; // Normalize to 0-360
+    heading = (heading + 360) % 360;
 
     return Math.round(heading);
 }
@@ -35,14 +77,15 @@ function calculateHeading(from, to) {
  */
 async function generateVideo(route, options = {}) {
     const { origin, destination } = route;
-    const fps = options.fps || parseInt(process.env.VIDEO_FPS) || 5; // Use dynamic FPS from request
+    const fps = options.fps || VIDEO_FPS;
+    const useAI = options.useAI !== false; // Default true
     
     console.log('[Generator] Starting video generation...');
     console.log(`[Generator] Route: ${origin.lat},${origin.lng} → ${destination.lat},${destination.lng}`);
-    console.log(`[Generator] FPS: ${fps}`);
+    console.log(`[Generator] FPS: ${fps}, AI Interpolation: ${useAI}`);
 
     try {
-        // Step 1: Get directions from Google
+        // Get directions
         console.log('[Generator] Fetching directions...');
         const directions = await getDirections(origin, destination);
         
@@ -55,34 +98,55 @@ async function generateVideo(route, options = {}) {
         
         console.log(`[Generator] Route decoded: ${decodedPath.length} points`);
 
-        // Step 2: Sample points along route
+        // Sample points
         const sampledPoints = samplePoints(decodedPath, FRAMES_PER_ROUTE);
         console.log(`[Generator] Sampled ${sampledPoints.length} frames`);
 
-        // Step 3: Calculate headings for each point (looking forward)
+        // Calculate headings
         const pointsWithHeadings = calculateHeadings(sampledPoints);
         console.log(`[Generator] Calculated headings for ${pointsWithHeadings.length} points`);
 
-        // Step 4: Download Street View images with dynamic headings
+        // Download images
         console.log('[Generator] Downloading Street View images...');
         const frameFiles = await downloadStreetViewImages(pointsWithHeadings);
         console.log(`[Generator] Downloaded ${frameFiles.length} images`);
 
-        // Step 5: Generate video with ffmpeg
+        // AI Frame Interpolation (RIFE)
+        let finalFrameDir = TEMP_DIR;
+        let finalFps = fps;
+        
+        if (useAI && frameFiles.length > 5) {
+            const rifeDir = path.join(TEMP_DIR, 'rife_output');
+            await fs.mkdir(rifeDir, { recursive: true });
+            
+            const rifeSuccess = await applyRifeInterpolation(TEMP_DIR, rifeDir, 2);
+            
+            if (rifeSuccess) {
+                finalFrameDir = rifeDir;
+                finalFps = fps * 2; // Double FPS after interpolation
+                console.log(`[Generator] AI interpolation applied. New FPS: ${finalFps}`);
+            }
+        }
+
+        // Generate video
         console.log('[Generator] Creating video...');
         const filename = `route_${Date.now()}.mp4`;
         const outputPath = path.join(OUTPUT_DIR, filename);
         
-        await createVideoFromFrames(frameFiles, outputPath, fps); // Pass fps to video creation
+        await createVideoFromFrames(finalFrameDir, outputPath, finalFps);
         console.log(`[Generator] Video saved: ${outputPath}`);
 
-        // Step 6: Cleanup temp files
+        // Cleanup
         await cleanupTempFiles(frameFiles);
+        if (finalFrameDir !== TEMP_DIR) {
+            await fs.rm(finalFrameDir, { recursive: true, force: true });
+        }
 
         return {
             filename,
             frames: frameFiles.length,
-            duration: frameFiles.length / fps // Use dynamic fps
+            duration: frameFiles.length / fps,
+            aiEnhanced: finalFrameDir !== TEMP_DIR
         };
 
     } catch (error) {
@@ -92,24 +156,19 @@ async function generateVideo(route, options = {}) {
 }
 
 /**
- * Calculate heading for each point (looking towards next point)
+ * Calculate heading for each point
  */
 function calculateHeadings(points) {
     return points.map((point, index) => {
         let heading = 0;
         
         if (index < points.length - 1) {
-            // Look towards next point
             heading = calculateHeading(point, points[index + 1]);
         } else if (index > 0) {
-            // For last point, use same heading as previous
             heading = calculateHeading(points[index - 1], point);
         }
         
-        return {
-            ...point,
-            heading
-        };
+        return { ...point, heading };
     });
 }
 
@@ -136,7 +195,7 @@ async function getDirections(origin, destination) {
 }
 
 /**
- * Decode Google polyline to array of lat/lng points
+ * Decode Google polyline
  */
 function decodePolyline(encoded) {
     const points = [];
@@ -166,10 +225,7 @@ function decodePolyline(encoded) {
         const dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
         lng += dlng;
 
-        points.push({
-            lat: lat / 1e5,
-            lng: lng / 1e5
-        });
+        points.push({ lat: lat / 1e5, lng: lng / 1e5 });
     }
 
     return points;
@@ -193,11 +249,11 @@ function samplePoints(path, count) {
 }
 
 /**
- * Download Street View images for each point
+ * Download Street View images
  */
 async function downloadStreetViewImages(pointsWithHeadings) {
     const frameFiles = [];
-    const batchSize = 5; // Process in batches to avoid rate limits
+    const batchSize = 5;
 
     for (let i = 0; i < pointsWithHeadings.length; i += batchSize) {
         const batch = pointsWithHeadings.slice(i, i + batchSize);
@@ -213,7 +269,7 @@ async function downloadStreetViewImages(pointsWithHeadings) {
                     size: `${FRAME_WIDTH}x${FRAME_HEIGHT}`,
                     location: `${point.lat},${point.lng}`,
                     fov: 90,
-                    heading: point.heading, // Dynamic heading looking forward
+                    heading: point.heading,
                     pitch: 0,
                     key: GOOGLE_API_KEY,
                     source: process.env.SV_SOURCE || 'outdoor'
@@ -228,8 +284,7 @@ async function downloadStreetViewImages(pointsWithHeadings) {
                 await fs.writeFile(filepath, response.data);
                 return filepath;
             } catch (error) {
-                console.warn(`[Frame ${frameNum}] Failed to download, using placeholder`);
-                // Create placeholder or skip
+                console.warn(`[Frame ${frameNum}] Failed to download`);
                 return null;
             }
         });
@@ -237,7 +292,6 @@ async function downloadStreetViewImages(pointsWithHeadings) {
         const batchResults = await Promise.all(batchPromises);
         frameFiles.push(...batchResults.filter(f => f !== null));
 
-        // Small delay between batches
         if (i + batchSize < pointsWithHeadings.length) {
             await new Promise(r => setTimeout(r, 200));
         }
@@ -247,18 +301,13 @@ async function downloadStreetViewImages(pointsWithHeadings) {
 }
 
 /**
- * Create MP4 video from frame images using ffmpeg
+ * Create MP4 video from frames
  */
-function createVideoFromFrames(frameFiles, outputPath, fps) {
-    const videoFps = fps || VIDEO_FPS;
-    
+function createVideoFromFrames(frameDir, outputPath, fps) {
     return new Promise((resolve, reject) => {
-        // Ensure output directory exists
-        const outputDir = path.dirname(outputPath);
-        
         ffmpeg()
-            .input(path.join(TEMP_DIR, 'frame_%04d.jpg'))
-            .inputFPS(videoFps)
+            .input(path.join(frameDir, 'frame_%04d.jpg'))
+            .inputFPS(fps)
             .output(outputPath)
             .videoCodec('libx264')
             .outputOptions([
@@ -279,7 +328,7 @@ function createVideoFromFrames(frameFiles, outputPath, fps) {
 }
 
 /**
- * Cleanup temporary frame files
+ * Cleanup temporary files
  */
 async function cleanupTempFiles(frameFiles) {
     try {
@@ -292,4 +341,4 @@ async function cleanupTempFiles(frameFiles) {
     }
 }
 
-module.exports = { generateVideo };
+module.exports = { generateVideo, checkRifeAvailable };
