@@ -12,8 +12,9 @@ const FRAMES_PER_ROUTE = parseInt(process.env.FRAMES_PER_ROUTE) || 200;
 const FRAME_WIDTH = parseInt(process.env.FRAME_WIDTH) || 640;
 const FRAME_HEIGHT = parseInt(process.env.FRAME_HEIGHT) || 640;
 const VIDEO_FPS = parseInt(process.env.VIDEO_FPS) || 5;
-const TEMP_DIR = process.env.TEMP_DIR || './temp';
-const OUTPUT_DIR = process.env.OUTPUT_DIR || './output';
+// Use absolute paths for Render compatibility
+const TEMP_DIR = process.env.TEMP_DIR ? path.resolve(process.env.TEMP_DIR) : path.join(__dirname, '..', 'temp');
+const OUTPUT_DIR = process.env.OUTPUT_DIR ? path.resolve(process.env.OUTPUT_DIR) : path.join(__dirname, '..', 'output');
 const USE_RIFE = process.env.USE_RIFE === 'true'; // Habilitar RIFE
 
 /**

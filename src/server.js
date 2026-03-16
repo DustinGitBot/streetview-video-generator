@@ -9,15 +9,17 @@ const { generateVideo } = require('./generator');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Create temp and output directories
-const TEMP_DIR = process.env.TEMP_DIR || './temp';
-const OUTPUT_DIR = process.env.OUTPUT_DIR || './output';
+// Create temp and output directories with absolute paths
+const TEMP_DIR = process.env.TEMP_DIR ? path.resolve(process.env.TEMP_DIR) : path.join(__dirname, '..', 'temp');
+const OUTPUT_DIR = process.env.OUTPUT_DIR ? path.resolve(process.env.OUTPUT_DIR) : path.join(__dirname, '..', 'output');
 
 async function ensureDirectories() {
     try {
         await fs.mkdir(TEMP_DIR, { recursive: true });
         await fs.mkdir(OUTPUT_DIR, { recursive: true });
-        console.log('[Server] Directories created/verified');
+        console.log('[Server] Directories created/verified:');
+        console.log('  - Temp:', TEMP_DIR);
+        console.log('  - Output:', OUTPUT_DIR);
     } catch (error) {
         console.error('[Server Error] Cannot create directories:', error.message);
     }
