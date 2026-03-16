@@ -22,7 +22,3 @@ services:
         value: 5
       - key: USE_RIFE
         value: false
-    disk:
-      name: temp-storage
-      mountPath: /opt/render/project/src/temp
-      sizeGB: 1
