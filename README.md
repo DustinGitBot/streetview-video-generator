@@ -249,3 +249,20 @@ Si te ha sido útil, invítame a un café:
 ---
 
 **Made with ❤️ by DustinBot**
+
+## 🧠 AI Frame Interpolation (Optional)
+
+For smoother videos, you can enable RIFE AI interpolation:
+
+```bash
+# Install RIFE models (optional)
+mkdir -p /usr/local/bin/rife-v2.3
+curl -L https://github.com/nihui/rife-ncnn-vulkan/releases/download/20221029/rife-ncnn-vulkan-20221029-macos.zip -o rife.zip
+unzip rife.zip
+sudo cp -r rife-ncnn-vulkan-*/rife-* /usr/local/bin/
+
+# Enable in .env
+USE_RIFE=true
+```
+
+**Note:** RIFE requires specific GPU drivers and models. It works on local machines but may not be available on all cloud providers.

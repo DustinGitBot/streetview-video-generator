@@ -58,11 +58,14 @@ async function applyRifeInterpolation(frameFiles, outputDir, factor = 2) {
             await sharp(frameFiles[i]).png().toFile(destFile);
         }
         
-        console.log(`[RIFE] Running ${factor}x interpolation...`);
+        console.log(`[RIFE] Running interpolation...`);
         
-        // Ejecutar RIFE
-        const rifeCmd = `cd "${rifeInputDir}" && rife-ncnn-vulkan -i . -o "${outputDir}" -n ${factor}`;
-        await execPromise(rifeCmd, { timeout: 300000 });
+        // Ejecutar RIFE - sin -n para usar default (duplica frames)
+        const rifeCmd = `rife-ncnn-vulkan -i "${rifeInputDir}" -o "${outputDir}"`;
+        await execPromise(rifeCmd, { 
+            timeout: 300000,
+            cwd: rifeInputDir
+        });
         
         // Verificar resultado
         const outputFiles = await fs.readdir(outputDir);
