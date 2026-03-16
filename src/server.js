@@ -2,17 +2,35 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs').promises;
 const rateLimit = require('express-rate-limit');
 const { generateVideo } = require('./generator');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Create temp and output directories
+const TEMP_DIR = process.env.TEMP_DIR || './temp';
+const OUTPUT_DIR = process.env.OUTPUT_DIR || './output';
+
+async function ensureDirectories() {
+    try {
+        await fs.mkdir(TEMP_DIR, { recursive: true });
+        await fs.mkdir(OUTPUT_DIR, { recursive: true });
+        console.log('[Server] Directories created/verified');
+    } catch (error) {
+        console.error('[Server Error] Cannot create directories:', error.message);
+    }
+}
+
+ensureDirectories();
+
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
-app.use('/output', express.static('output'));
+app.use('/output', express.static(OUTPUT_DIR));
+app.use('/temp', express.static(TEMP_DIR));
 
 // Rate limiting - protect API quotas
 const apiLimiter = rateLimit({
